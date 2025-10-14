@@ -51,6 +51,14 @@ def _srgb_to_linear(rgb: np.ndarray) -> np.ndarray:
     rgb = np.asarray(rgb, dtype=np.float64)
     return np.where(rgb <= 0.04045, rgb / 12.92, ((rgb + 0.055) / 1.055) ** 2.4)
 
+def _linear_to_srgb(rgb: np.ndarray) -> np.ndarray:
+    rgb = np.asarray(rgb, dtype=np.float64)
+    return np.where(
+        rgb <= 0.0031308,
+        rgb * 12.92,
+        1.055 * np.power(rgb, 1 / 2.4) - 0.055
+    )
+
 def _rgb_to_xyz_d65(rgb: np.ndarray) -> np.ndarray:
     rgb_lin = _srgb_to_linear(rgb)
     return rgb_lin @ _SRGB_TO_XYZ.T
@@ -132,30 +140,66 @@ def _ciede2000_components(lab1: np.ndarray, lab2: np.ndarray,
 
     E2 = L_comp + C_comp + H_comp + corr
     E = np.sqrt(np.maximum(E2, 0.0))
-    return E, L_comp, C_comp, H_comp, corr
+    return E, Lt, Ct, Ht, corr
 
-def compute_e00_report(cam_sRGB24: np.ndarray,
-                        ref_sRGB24: np.ndarray = REF_RGB24) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """输入 24x3 相机 sRGB 数组，输出：
-    E, L, C, H, corr 五个一维数组 (24,)
-    cam_lab, ref_lab 各 24x3
+def unify_luminance_by_patch21(
+    cam_sRGB24: np.ndarray,
+    ref_sRGB24: np.ndarray,
+) -> np.ndarray:
+    """
+    用 24x3 的 21# 色块(默认索引 20) 在线性域做亮度统一化(0-255)
     """
     cam = np.asarray(cam_sRGB24, dtype=np.float64)
     ref = np.asarray(ref_sRGB24, dtype=np.float64)
     assert cam.shape == (24, 3) and ref.shape == (24, 3)
 
+    # 转 0~1
+    cam01 = cam / 255.0
+    ref01 = ref / 255.0
+
+    # sRGB -> Linear
+    cam_lin = _srgb_to_linear(cam01)
+    ref_lin = _srgb_to_linear(ref01)
+
+    # 计算指定色块的线性亮度 (r+g+b)/3
+    cam_L = float(cam_lin[20].mean())
+    ref_L = float(ref_lin[20].mean())
+
+    scale = ref_L / cam_L
+    cam_lin = np.clip(cam_lin * scale, 0.0, 1.0)
+
+    # Linear -> sRGB -> 0~255
+    cam01_adj = _linear_to_srgb(cam_lin)
+    cam_adj = np.clip(cam01_adj * 255.0, 0.0, 255.0)
+    return cam_adj
+
+
+def compute_e00_report(
+    cam_sRGB24: np.ndarray,
+    ref_sRGB24: np.ndarray = REF_RGB24,
+    unify_luminance: bool = False,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    输入 24x3 相机 sRGB 数组, 输出:
+      E, L 两个一维数组 (24,)
+      cam_lab, ref_lab 各 24x3
+
+    当 unify_luminance=True 时:
+      先调用 unify_luminance_by_patch21 在线性域用 21# 色块(索引 20) 做亮度统一化
+      再进行 Lab/ΔE00 计算
+    """
+    cam = np.asarray(cam_sRGB24, dtype=np.float64)
+    ref = np.asarray(ref_sRGB24, dtype=np.float64)
+    assert cam.shape == (24, 3) and ref.shape == (24, 3)
+
+    if unify_luminance:
+        cam = unify_luminance_by_patch21(cam, ref)
+
     cam_lab = _rgb_to_lab_d65(cam)
     ref_lab = _rgb_to_lab_d65(ref)
 
-    E, L2, C2, H2, corr2 = _ciede2000_components(cam_lab, ref_lab)
-
-    eps = 1e-12
-    L = L2 / np.maximum(E, eps)
-    C = C2 / np.maximum(E, eps)
-    H = H2 / np.maximum(E, eps)
-    corr = corr2 / np.maximum(E, eps)
-
-    return E, L, C, H, corr, cam_lab, ref_lab
+    E, L, C, H, corr = _ciede2000_components(cam_lab, ref_lab)
+    return E, L, cam_lab, ref_lab
 
 if __name__ == "__main__":
     cam_rgb24 = np.array([
@@ -185,7 +229,7 @@ if __name__ == "__main__":
         [0.130, 0.131, 0.131],
     ], dtype=np.float64)
 
-    E, L, C, H, corr, cam_lab, ref_lab = compute_e00_report(cam_rgb24)
+    E, L, cam_lab, ref_lab = compute_e00_report(cam_rgb24, unify_luminance = False)
     print("E_mean", E.mean())
     print("E", E) #imgtest 6.77 9.12 8.91 ..
 
