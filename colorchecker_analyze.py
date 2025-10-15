@@ -6,7 +6,23 @@ import numpy as np
 from detect_colorchecker import detect_colorchecker
 from calc_E import compute_e00_report
 from plot_lab_ab import create_lab_delta_canvas
+from PIL import Image, ImageCms
+from io import BytesIO
+import pillow_heif
+pillow_heif.register_heif_opener()
 
+def _read_icc_bgr(path: str) -> np.ndarray:
+    im = Image.open(path)
+    rgb = im.convert("RGB")
+    icc = im.info.get("icc_profile")
+    if icc:
+        try:
+            src = ImageCms.ImageCmsProfile(BytesIO(icc))
+            dst = ImageCms.createProfile("sRGB")
+            rgb = ImageCms.profileToProfile(rgb, src, dst, outputMode="RGB")
+        except Exception:
+            pass  # 解析失败则按 sRGB 处理
+    return cv2.cvtColor(np.array(rgb), cv2.COLOR_RGB2BGR)
 
 def summarize_colorchecker(img_path: str):
     """
@@ -178,7 +194,7 @@ def summarize_colorchecker(img_path: str):
 
     # ====================== 读图与检测 ======================
 
-    img = cv2.imread(img_path)
+    img = _read_icc_bgr(img_path)
     if img is None:
         raise FileNotFoundError(f"未找到图像: {img_path}")
 
@@ -223,7 +239,7 @@ def summarize_colorchecker(img_path: str):
 
 # ============ 示例用法 ============
 if __name__ == "__main__":
-    merged_img, avg_e, avg_c, avg_l = summarize_colorchecker("data/iphone.png")
+    merged_img, avg_e, avg_c, avg_l = summarize_colorchecker("data/DE.png")
     print(f"AVG E = {avg_e:.3f}, AVG C = {avg_c:.3f}, AVG L = {avg_l:.3f}")
     cv2.imshow("summary_merged", merged_img)
     cv2.waitKey(0)
