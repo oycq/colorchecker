@@ -199,7 +199,7 @@ def compute_e00_report(
     ref_lab = _rgb_to_lab_d65(ref)
 
     E, L, C, H, corr = _ciede2000_components(cam_lab, ref_lab)
-    return E, C, L, cam_lab, ref_lab
+    return E, -C, -L, cam_lab, ref_lab
 
 if __name__ == "__main__":
     cam_rgb24 = np.array([

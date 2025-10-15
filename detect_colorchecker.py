@@ -6,7 +6,7 @@ import numpy as np
 from typing import List, Tuple
 
 # ========== 参数 ==========
-IMG_PATH = "data/detect_colorchecker.png"
+IMG_PATH = "data/iphone.png"
 
 # tag 左上角点的真实世界坐标 单位 mm 原点是页面中心 x 向右 y 向上
 WORLD_MM_BY_ID = {
@@ -24,8 +24,10 @@ CC_W_MM = 184.0
 CC_H_MM = 276.0
 
 # 展开后固定输出尺寸 px
-OUT_W = 408
-OUT_H = 580
+OUT_W = 500
+OUT_H = 710
+
+IF_DRAW_YELLOW_BOX = False
 
 # ========== 工具函数 ==========
 def detect_tags_16h5(img: np.ndarray) -> Tuple[List[np.ndarray], np.ndarray]:
@@ -75,7 +77,8 @@ def sample_box_means_rgb(img_bgr: np.ndarray, centers: np.ndarray, box: int = 20
             mean_rgb = roi_rgb.reshape(-1, 3).mean(axis=0)
             rgb_means.append(mean_rgb.tolist())
         # 绘制黄色方框 线宽 1 注意 OpenCV 使用 BGR
-        cv2.rectangle(vis, (x0, y0), (x1 - 1, y1 - 1), (0, 255, 255), 1, cv2.LINE_AA)
+        if IF_DRAW_YELLOW_BOX:
+            cv2.rectangle(vis, (x0, y0), (x1 - 1, y1 - 1), (0, 255, 255), 1, cv2.LINE_AA)
     rgb_means = np.array(rgb_means, dtype=np.float32)  # 形状 24x3 RGB 顺序
     return rgb_means, vis
 
@@ -99,8 +102,6 @@ def detect_colorchecker(img_bgr: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np
         cv2.polylines(draw, [pts_i.reshape(-1, 1, 2)], True, (0, 255, 0), 2)
         tl = pick_top_left_point(pts)
         cv2.circle(draw, tuple(np.round(tl).astype(int)), 4, (0, 0, 255), -1)
-        cv2.putText(draw, f"id {int(id_)}", tuple(pts_i[0]),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2, cv2.LINE_AA)
 
     # 组装配准点 仅使用左上角点
     img_pts = []
