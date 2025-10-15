@@ -199,7 +199,7 @@ def compute_e00_report(
     ref_lab = _rgb_to_lab_d65(ref)
 
     E, L, C, H, corr = _ciede2000_components(cam_lab, ref_lab)
-    return E, L, cam_lab, ref_lab
+    return E, C, L, cam_lab, ref_lab
 
 if __name__ == "__main__":
     cam_rgb24 = np.array([
@@ -229,7 +229,7 @@ if __name__ == "__main__":
         [0.130, 0.131, 0.131],
     ], dtype=np.float64)
 
-    E, L, cam_lab, ref_lab = compute_e00_report(cam_rgb24, unify_luminance = False)
+    E, C, L, cam_lab, ref_lab = compute_e00_report(cam_rgb24, unify_luminance = False)
     print("E_mean", E.mean())
     print("E", E) #imgtest 6.77 9.12 8.91 ..
 
