@@ -1,32 +1,29 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
-import cv2
-import numpy as np
-
-import my_isp
-
-
 import os
 import glob
+import numpy as np
 import matplotlib.pyplot as plt
+import cv2
 
+import my_isp
 from colorchecker_analyze import summarize_colorchecker
 
 
 SCENE_DIR = "scene2"
 BASE_PATH = "./" + SCENE_DIR
+
+# html output fixed here
 OUTPUT_DIR = "./output2"
 
-CAMERAS = ["OLD_ISP", "MY_ISP"]
+# names used in report
+CAMERAS = ["old_isp", "new_isp"]
 CAMERA_PATTERNS = {
-    "OLD_ISP": "*cam2_isp.png",
-    "MY_ISP": "my_isp.png",
+    "old_isp": "*cam2_isp.png",
+    "new_isp": "new_isp.png",
 }
 
 COLORS = {
-    "OLD_ISP": "#6C757D",
-    "MY_ISP": "#2E86AB",
+    "old_isp": "#6C757D",
+    "new_isp": "#2E86AB",
 }
 
 plt.rcParams.update({
@@ -41,7 +38,7 @@ BAR_SPACING = BAR_WIDTH * 1.0
 SCENE_SPACING = BAR_WIDTH * 1.2
 
 
-def run_my_isp():
+def run_new_isp():
     from pathlib import Path
 
     inputs = sorted(Path(SCENE_DIR).rglob("*raw.png"))
@@ -49,7 +46,7 @@ def run_my_isp():
         raw = cv2.imread(str(p), cv2.IMREAD_UNCHANGED)
         img = raw.astype(np.float32) / 65535.0
         out = my_isp.process(img)
-        cv2.imwrite(str(p.parent / "my_isp.png"), out)
+        cv2.imwrite(str(p.parent / "new_isp.png"), out)
         print(p)
 
 
@@ -62,34 +59,50 @@ def get_scene_data():
         if not os.path.isdir(scene_path):
             continue
 
-        scene_data = {}
-        merged_imgs = {}
+        # scene-level rule: if any camera fails (no tag / no file / exception), skip the whole scene
+        per_cam = {}
+        ok = True
 
         for camera, pattern in CAMERA_PATTERNS.items():
             img_paths = glob.glob(os.path.join(scene_path, pattern))
-            scene_data[camera] = []
-            merged_imgs[camera] = []
+            if not img_paths:
+                ok = False
+                break
 
-            for path in img_paths:
-                try:
-                    merged_img, avg_e, avg_c, avg_l = summarize_colorchecker(path)
-                except Exception as e:
-                    print("skip:", path, str(e))
-                    continue
+            path = img_paths[0]
+            try:
+                merged_img, avg_e, avg_c, avg_l = summarize_colorchecker(path)
+            except Exception:
+                ok = False
+                break
 
-                merged_img_rgb = cv2.cvtColor(merged_img, cv2.COLOR_BGR2RGB)
+            per_cam[camera] = {
+                "merged_img": merged_img,
+                "avg_e": avg_e,
+                "avg_c": avg_c,
+                "avg_l": avg_l,
+            }
 
-                img_path = f"{OUTPUT_DIR}/merged_images/{scene_folder}/{camera}.png"
-                os.makedirs(os.path.dirname(img_path), exist_ok=True)
-                plt.imsave(img_path, merged_img_rgb)
-                merged_imgs[camera].append(img_path)
+        if not ok:
+            print("skip scene:", scene_folder)
+            continue
 
-                scene_data[camera].append((avg_e, avg_c, avg_l))
+        # save merged images only when both cameras are ok
+        images = {}
+        data = {}
+        for camera in CAMERAS:
+            merged_img_rgb = cv2.cvtColor(per_cam[camera]["merged_img"], cv2.COLOR_BGR2RGB)
+            img_path = f"{OUTPUT_DIR}/merged_images/{scene_folder}/{camera}.png"
+            os.makedirs(os.path.dirname(img_path), exist_ok=True)
+            plt.imsave(img_path, merged_img_rgb)
+
+            images[camera] = [img_path]
+            data[camera] = [(per_cam[camera]["avg_e"], per_cam[camera]["avg_c"], per_cam[camera]["avg_l"])]
 
         scenes.append({
             "folder_name": scene_folder,
-            "data": scene_data,
-            "images": merged_imgs,
+            "data": data,
+            "images": images,
         })
 
     return scenes
@@ -99,15 +112,10 @@ def calculate_averages(scenes):
     avg_values = {camera: {"E": [], "C": [], "L": []} for camera in CAMERAS}
     for scene in scenes:
         for camera in CAMERAS:
-            if scene["data"][camera]:
-                e_vals, c_vals, l_vals = zip(*scene["data"][camera])
-                avg_values[camera]["E"].append(float(np.mean(e_vals)))
-                avg_values[camera]["C"].append(float(np.mean(c_vals)))
-                avg_values[camera]["L"].append(float(np.mean(l_vals)))
-            else:
-                avg_values[camera]["E"].append(np.nan)
-                avg_values[camera]["C"].append(np.nan)
-                avg_values[camera]["L"].append(np.nan)
+            e_vals, c_vals, l_vals = zip(*scene["data"][camera])
+            avg_values[camera]["E"].append(float(np.mean(e_vals)))
+            avg_values[camera]["C"].append(float(np.mean(c_vals)))
+            avg_values[camera]["L"].append(float(np.mean(l_vals)))
     return avg_values
 
 
@@ -127,8 +135,6 @@ def plot_bars(avg_values, scenes, metric, ylabel, save_path):
             color=COLORS[camera],
         )
         for bar, val in zip(bars, values):
-            if np.isnan(val):
-                continue
             h = bar.get_height()
             plt.text(
                 bar.get_x() + bar.get_width() / 2.0,
@@ -153,9 +159,9 @@ def plot_summary_table(avg_values, save_path):
     summary_data = {}
     for camera in CAMERAS:
         summary_data[camera] = {
-            "E": float(np.nanmean(avg_values[camera]["E"])) if avg_values[camera]["E"] else 0.0,
-            "C": float(np.nanmean(avg_values[camera]["C"])) if avg_values[camera]["C"] else 0.0,
-            "L": float(np.nanmean(avg_values[camera]["L"])) if avg_values[camera]["L"] else 0.0,
+            "E": float(np.mean(avg_values[camera]["E"])) if avg_values[camera]["E"] else 0.0,
+            "C": float(np.mean(avg_values[camera]["C"])) if avg_values[camera]["C"] else 0.0,
+            "L": float(np.mean(avg_values[camera]["L"])) if avg_values[camera]["L"] else 0.0,
         }
 
     fig, axes = plt.subplots(1, 3, figsize=FIG_SIZE)
@@ -194,7 +200,7 @@ def generate_html(scenes):
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>ISP compare report</title>
+  <title>compare new isp</title>
   <style>
     body {{ font-family: 'Microsoft YaHei', Arial; margin: 20px; }}
     .container {{ max-width: 80%; margin: auto; }}
@@ -211,8 +217,8 @@ def generate_html(scenes):
 <body>
   <div class="container">
     <div class="header">
-      <h1>ISP compare</h1>
-      <p>OLD_ISP vs MY_ISP | {num_scenes} scenes</p>
+      <h1>compare new isp</h1>
+      <p>old_isp vs new_isp | {num_scenes} scenes</p>
     </div>
     <div class="plot">
       <h2>summary</h2>
@@ -256,7 +262,7 @@ def generate_html(scenes):
 
 
 def main():
-    run_my_isp()
+    run_new_isp()
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     os.makedirs(f"{OUTPUT_DIR}/summary_plots", exist_ok=True)
@@ -270,8 +276,10 @@ def main():
     plot_summary_table(avg_values, f"{OUTPUT_DIR}/summary_plots/summary.png")
 
     generate_html(scenes)
-    print(f"done, open: {OUTPUT_DIR}/index.html")
+    print("done:", OUTPUT_DIR + "/index.html")
 
 
 if __name__ == "__main__":
     main()
+
+
