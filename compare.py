@@ -1,4 +1,8 @@
 import os
+#防止多线程冲突
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
 import glob
 import numpy as np
 import matplotlib.pyplot as plt
