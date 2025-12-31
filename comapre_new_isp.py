@@ -25,6 +25,11 @@ CAMERA_PATTERNS = {
     "new_isp": "new_isp.png",
 }
 
+CAMERA_DISPLAY = {
+    "old_isp": "地平线AWB",
+    "new_isp": "自研AWB",
+}
+
 COLORS = {
     "old_isp": "#6C757D",
     "new_isp": "#2E86AB",
@@ -134,7 +139,7 @@ def plot_bars(avg_values, scenes, metric, ylabel, save_path):
             x + BAR_OFFSETS[i],
             values,
             width=BAR_WIDTH,
-            label=camera,
+            label=CAMERA_DISPLAY[camera],
             align="center",
             color=COLORS[camera],
         )
@@ -150,7 +155,7 @@ def plot_bars(avg_values, scenes, metric, ylabel, save_path):
             )
 
     plt.xticks(x, scene_names, rotation=0, ha="center", fontsize=11)
-    plt.xlabel("scene", fontsize=16)
+    plt.xlabel("场景", fontsize=16)
     plt.ylabel(ylabel, fontsize=16)
     plt.ylim(0, 12)
     plt.legend(fontsize=14)
@@ -175,7 +180,7 @@ def plot_summary_table(avg_values, save_path):
     for idx, (metric, title) in enumerate(zip(metrics, titles)):
         ax = axes[idx]
         values = [summary_data[camera][metric] for camera in CAMERAS]
-        bars = ax.bar(CAMERAS, values, width=0.8, color=[COLORS[camera] for camera in CAMERAS])
+        bars = ax.bar([CAMERA_DISPLAY[c] for c in CAMERAS], values, width=0.8, color=[COLORS[camera] for camera in CAMERAS])
         ax.set_title(title, fontsize=14, pad=15)
         ax.set_ylabel(metric, fontsize=12)
         ax.set_ylim(0, 10)
@@ -204,41 +209,79 @@ def generate_html(scenes):
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>compare new isp</title>
+  <title>新旧AWB效果对比报告</title>
   <style>
     body {{ font-family: 'Microsoft YaHei', Arial; margin: 20px; }}
     .container {{ max-width: 80%; margin: auto; }}
-    .header {{ text-align: center; margin-bottom: 40px; }}
+    .header {{ text-align: center; margin-bottom: 20px; }}
     .plot {{ text-align: center; margin: 30px 0; }}
     .plot img {{ width: 100%; height: auto; max-width: 100%; }}
+    .first-page {{ page-break-inside: avoid; break-inside: avoid; }}
+    .second-page {{ page-break-inside: avoid; break-inside: avoid; }}
+    .intro {{ margin: 10px 0 20px 0; padding: 0; border: none; }}
+    .intro h2 {{ margin: 0 0 8px 0; font-size: 18px; }}
+    .intro p {{ margin: 6px 0; line-height: 1.45; }}
+    .intro ul {{ margin: 8px 0 0 18px; }}
+    .intro li {{ margin: 4px 0; line-height: 1.45; }}
     .scene-gallery {{ display: grid; grid-template-columns: 1fr; gap: 60px; margin-top: 40px; }}
-    .scene {{ margin-bottom: 40px; }}
+    .scene {{ margin-bottom: 40px; break-inside: avoid; page-break-inside: avoid; }}
     .scene h3 {{ margin: 0 0 20px 0; text-align: center; }}
     .camera-label {{ font-weight: bold; margin: 10px 0 5px 0; font-size: 18px; text-align: center; }}
     .scene img {{ width: 100%; height: auto; max-width: 100%; object-fit: contain; display: block; margin: 5px auto; }}
+
+    @media print {{
+      body {{ margin: 10mm; }}
+      .container {{ max-width: 100%; }}
+      .first-page {{
+        min-height: 277mm;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+      }}
+      .first-page {{ page-break-after: always; break-after: page; }}
+      .second-page {{ page-break-after: always; break-after: page; }}
+      .scene-gallery {{ gap: 20px; margin-top: 20px; }}
+      .scene {{ margin-bottom: 20px; }}
+      .scene-gallery > .scene:nth-child(2n+1):not(:first-child) {{ page-break-before: always; }}
+    }}
   </style>
 </head>
 <body>
   <div class="container">
-    <div class="header">
-      <h1>compare new isp</h1>
-      <p>old_isp vs new_isp | {num_scenes} scenes</p>
+    <div class="first-page">
+      <div class="header">
+        <h1>新旧AWB效果对比报告</h1>
+        <p>{CAMERA_DISPLAY["old_isp"]} vs {CAMERA_DISPLAY["new_isp"]}</p>
+      </div>
+      <div class="intro">
+        <h2>报告说明</h2>
+        <p>本报告对比 {CAMERA_DISPLAY["old_isp"]} 与 {CAMERA_DISPLAY["new_isp"]} 的色彩还原表现. 评估基于 ColorChecker 色卡, 将每个色块的测量颜色与标准参考颜色对比.</p>
+        <p>核心指标为 CIEDE2000(DeltaE/E00). CIEDE2000 是业界常用的颜色差异评价标准, 更贴近人眼感知. 本报告所有指标均为数值越小越好.</p>
+        <ul>
+          <li><b>DeltaE</b>: 综合色差, 衡量整体颜色与标准色的差异.</li>
+          <li><b>DeltaC</b>: 饱和度(Chroma)误差, 衡量饱和度偏差.</li>
+          <li><b>DeltaL</b>: 亮度(Lightness)误差, 衡量亮度偏差.</li>
+        </ul>
+        <p>第一页为总体汇总(所有场景平均). 第二页为分场景柱状对比. 后续为每个场景的可视化结果.</p>
+      </div>
+      <div class="plot">
+        <h2>总体汇总(综合色差/饱和度误差/亮度误差，数值越小越好)</h2>
+        <img src="summary_plots/summary.png" alt="summary">
+      </div>
     </div>
-    <div class="plot">
-      <h2>summary</h2>
-      <img src="summary_plots/summary.png" alt="summary">
-    </div>
-    <div class="plot">
-      <h2>DeltaE by scene</h2>
-      <img src="summary_plots/delta_e.png" alt="delta_e">
-    </div>
-    <div class="plot">
-      <h2>DeltaC by scene</h2>
-      <img src="summary_plots/delta_c.png" alt="delta_c">
-    </div>
-    <div class="plot">
-      <h2>DeltaL by scene</h2>
-      <img src="summary_plots/delta_l.png" alt="delta_l">
+    <div class="second-page">
+      <div class="plot">
+        <h2>各场景 DeltaE 对比(综合色差，数值越小越好)</h2>
+        <img src="summary_plots/delta_e.png" alt="delta_e">
+      </div>
+      <div class="plot">
+        <h2>各场景 DeltaC 对比(饱和度误差，数值越小越好)</h2>
+        <img src="summary_plots/delta_c.png" alt="delta_c">
+      </div>
+      <div class="plot">
+        <h2>各场景 DeltaL 对比(亮度误差，数值越小越好)</h2>
+        <img src="summary_plots/delta_l.png" alt="delta_l">
+      </div>
     </div>
     <div class="scene-gallery">
 """
@@ -248,7 +291,7 @@ def generate_html(scenes):
         for camera in CAMERAS:
             html += f'''
   <div class="camera-img">
-    <div class="camera-label">{camera}</div>
+    <div class="camera-label">{CAMERA_DISPLAY[camera]}</div>
     <img src="merged_images/{scene["folder_name"]}/{camera}.png" alt="{camera}">
   </div>
 '''
