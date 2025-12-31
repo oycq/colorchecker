@@ -265,7 +265,7 @@ def generate_html(scenes):
         <p>第一页为总体汇总(所有场景平均). 第二页为分场景柱状对比. 后续为每个场景的可视化结果.</p>
       </div>
       <div class="plot">
-        <h2>总体汇总(综合色差/饱和度误差/亮度误差，数值越小越好)</h2>
+        <h2>总体汇总(综合色差/饱和度误差/亮度误差，新算法效果均更好)</h2>
         <img src="summary_plots/summary.png" alt="summary">
       </div>
     </div>
