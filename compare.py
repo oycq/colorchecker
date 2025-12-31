@@ -6,7 +6,7 @@ import cv2
 from colorchecker_analyze import summarize_colorchecker
 
 # 配置
-BASE_PATH = "./场景"
+BASE_PATH = "./scene"
 OUTPUT_DIR = "./output"
 CAMERAS = ["iPhone", "DE", "Xiaomi"]
 CAMERA_PATTERNS = {
