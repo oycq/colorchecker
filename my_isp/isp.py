@@ -1,8 +1,8 @@
 # isp.py
 import numpy as np
 import cv2
-from awb import awb_analysis
-import lsc
+from .awb import awb_analysis
+from . import lsc
 
 BLACK_LEVEL = 9
 
@@ -14,7 +14,7 @@ def linear_to_srgb(img_linear):
 
 def tmo(bgr_float: np.ndarray) -> np.ndarray:
     # 1. 计算亮度 Y
-    # 权重：Rec.709
+    # 权重: Rec.709
     Y = 0.0722 * bgr_float[:, :, 0] + 0.7152 * bgr_float[:, :, 1] + 0.2126 * bgr_float[:, :, 2]
 
     # 2. 降采样统计 (128x128 = 16384 pixels)
@@ -50,7 +50,7 @@ def tmo(bgr_float: np.ndarray) -> np.ndarray:
 
 def isp_process(img_float: np.ndarray) -> np.ndarray:
     """
-    ISP 处理流程：
+    ISP 处理流程:
     - 输入: float32 (h, w), 范围 0-1 (RAW Bayer 图像)
     - 输出: uint8 (h, w, 3), sRGB RGB 图像
     """
@@ -61,7 +61,7 @@ def isp_process(img_float: np.ndarray) -> np.ndarray:
     black_level = BLACK_LEVEL * 256
     img_corrected = np.clip(img_uint16.astype(np.int32) - black_level, 0, 65535).astype(np.uint16)
     
-    # 步骤3: 去马赛克 (demosaicing)，转换为线性 BGR (uint16)
+    # 步骤3: 去马赛克 (demosaicing), 转换为线性 BGR (uint16)
     linear_bgr_uint16 = cv2.cvtColor(img_corrected, cv2.COLOR_BayerBGGR2BGR_EA)
     
     # 步骤4: 转换为 float32 (0-1)
@@ -77,21 +77,14 @@ def isp_process(img_float: np.ndarray) -> np.ndarray:
     linear_bgr_float[:,:,2] *= k_r
     wb_bgr_float = np.clip(linear_bgr_float, 0.0, 1.0)
     
-    # 步骤5.2: 应用CCM (先转换为RGB，应用矩阵，再转回BGR)
+    # 步骤5.2: 应用CCM (先转换为RGB, 应用矩阵, 再转回BGR)
     wb_rgb_float = wb_bgr_float[..., ::-1]  # BGR to RGB
     h, w = wb_rgb_float.shape[:2]
     corrected_rgb = (wb_rgb_float.reshape(-1, 3) @ ccm.T).reshape(h, w, 3)
     corrected_rgb = np.clip(corrected_rgb, 0.0, 1.0)
     corrected_bgr = corrected_rgb[..., ::-1]  # RGB to BGR
 
-    # 步骤6: 高斯滤波
-    #corrected_bgr = cv2.GaussianBlur(corrected_bgr, (5, 5), sigmaX=0)
-    
-    # 步骤7: TMO
-    #tonemapped_bgr = corrected_bgr
-    tonemapped_bgr = tmo(corrected_bgr)
-
     # 步骤8: gamma
-    rgb_srgb_uint8 = linear_to_srgb(tonemapped_bgr)
+    rgb_srgb_uint8 = linear_to_srgb(corrected_bgr)
 
-    return rgb_srgb_uint8  # 返回 BGR uint8，便于 cv2.imshow 和 putText
+    return rgb_srgb_uint8  # 返回 BGR uint8, 便于 cv2.imshow 和 putText

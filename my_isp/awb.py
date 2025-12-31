@@ -4,16 +4,20 @@ import cv2
 import numpy as np
 import json
 import sys
+import os
+from pathlib import Path
 
 LUM_MIN_THROAT = 10 / 255.0
 LUM_MAX_THROAT = 220 / 255.0
-update_ratio = 0.9995
 
-cv2.namedWindow('AWB Scatter')
-cv2.setWindowProperty('AWB Scatter', cv2.WND_PROP_TOPMOST, 1)
+DEBUG = False
+if DEBUG:
+    cv2.namedWindow('AWB Scatter')
+    cv2.setWindowProperty('AWB Scatter', cv2.WND_PROP_TOPMOST, 1)
 
-# 加载 JSON 数据（全局加载一次）
-with open('results.json', 'r') as f:
+# 加载 JSON 数据 (全局加载一次)
+_RESULTS_JSON = Path(__file__).with_name("results.json")
+with _RESULTS_JSON.open("r", encoding="utf-8") as f:
     data = json.load(f)
 calibration_results = data['calibration_results']
 
@@ -29,7 +33,7 @@ temp_b = data['temp_fit']['b']
 x_min = data['rg_limits']['min']
 x_max = data['rg_limits']['max']
 
-# 参考色温标签、色温和CCM（用于插值）
+# 参考色温标签, 色温和CCM (用于插值)
 ref_labels = ['HZ', 'A', 'D65', 'D75']
 ref_temps = [2300, 2856, 6500, 7500]
 ref_ccms = [np.array(calibration_results[lbl]['ccm']) for lbl in ref_labels]
@@ -76,7 +80,7 @@ def awb_analysis(img):
         else:
             ccm = ref_ccms[-1]
     
-    # 行归一化，确保每一行和为1
+    # 行归一化, 确保每一行和为1
     for i in range(3):
         row_sum = np.sum(ccm[i])
         if row_sum != 0:
@@ -89,11 +93,11 @@ def analysis_scatter(original_img):
     IMG_SHAPE = 450
     scale = IMG_SHAPE / 1.5
     
-    # 如果模板未初始化，创建模板
+    # 如果模板未初始化, 创建模板
     if scatter_template is None:
         scatter_template = np.full((IMG_SHAPE, IMG_SHAPE, 3), (20 / 255.0, 20 / 255.0, 20 / 255.0), np.float32)
         
-        # 绘制上下限曲线（框框）
+        # 绘制上下限曲线 (框框)
         x_vals = np.linspace(x_min, x_max, 100)
         for idx in range(len(x_vals) - 1):
             x1 = int(x_vals[idx] * scale)
@@ -120,6 +124,8 @@ def analysis_scatter(original_img):
     
     # 绘制像素散点
     white_point_count = 0
+    sum_rg = 0.0
+    sum_bg = 0.0
     for i in range(32):
         for j in range(32):
             # 过滤过曝和欠曝像素
@@ -134,7 +140,7 @@ def analysis_scatter(original_img):
             rg = r / g
             bg = b / g
             
-            # 检查是否在白点区域（x_min到x_max，y_min到y_max）
+            # 检查是否在白点区域 (x_min到x_max, y_min到y_max)
             if not (x_min <= rg <= x_max):
                 continue
             y_max_val = upper_a / rg + upper_b
@@ -142,15 +148,19 @@ def analysis_scatter(original_img):
             if not (y_min_val <= bg <= y_max_val):
                 continue
 
-            # 更新awb比值
-            avg_rg = avg_rg * update_ratio + rg * (1 - update_ratio)
-            avg_bg = avg_bg * update_ratio + bg * (1 - update_ratio)
+            # 本张图统计: 有多少白点用多少白点做均值
+            sum_rg += rg
+            sum_bg += bg
             white_point_count += 1
 
             px = int(rg * scale)
             py = IMG_SHAPE - 1 - int(bg * scale)
             if 0 <= px < IMG_SHAPE and 0 <= py < IMG_SHAPE:
                 scatter_img[py, px] = (1, 1, 1)  # 白点像素
+
+    if white_point_count > 0:
+        avg_rg = sum_rg / white_point_count
+        avg_bg = sum_bg / white_point_count
 
     # 绘制白点数量
     cv2.putText(scatter_img, str(white_point_count), (20, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (1, 1, 1), 1)
@@ -167,8 +177,8 @@ def analysis_scatter(original_img):
     T = max(min_t, min(max_t, T))
     cv2.putText(scatter_img, f"T: {int(T)}K", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (1, 1, 1), 1)
 
-    # 计算CCM并在右上角显示（保留两位小数）
-    # (CCM计算已在awb_analysis中，此处仅为显示使用相同的逻辑)
+    # 计算CCM并在右上角显示 (保留两位小数)
+    # (CCM计算已在awb_analysis中, 此处仅为显示使用相同的逻辑)
     for i in range(len(ref_temps) - 1):
         if ref_temps[i] <= T <= ref_temps[i + 1]:
             weight = (T - ref_temps[i]) / (ref_temps[i + 1] - ref_temps[i])
@@ -180,7 +190,7 @@ def analysis_scatter(original_img):
         else:
             ccm = ref_ccms[-1]
     
-    # 行归一化（显示前）
+    # 行归一化 (显示前)
     for i in range(3):
         row_sum = np.sum(ccm[i])
         if row_sum != 0:
@@ -193,4 +203,5 @@ def analysis_scatter(original_img):
         cv2.putText(scatter_img, row_str, (x_pos, y_pos + i * 20), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (1, 1, 1), 1)
     
     # 显示散点图
-    cv2.imshow('AWB Scatter', scatter_img)
+    if DEBUG:
+        cv2.imshow('AWB Scatter', scatter_img)
