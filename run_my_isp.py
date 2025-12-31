@@ -14,8 +14,9 @@ import matplotlib.pyplot as plt
 from colorchecker_analyze import summarize_colorchecker
 
 
-BASE_PATH = "./scene"
-OUTPUT_DIR = "./output_my_isp"
+SCENE_DIR = "scene2"
+BASE_PATH = "./" + SCENE_DIR
+OUTPUT_DIR = "./output2"
 
 CAMERAS = ["OLD_ISP", "MY_ISP"]
 CAMERA_PATTERNS = {
@@ -43,7 +44,7 @@ SCENE_SPACING = BAR_WIDTH * 1.2
 def run_my_isp():
     from pathlib import Path
 
-    inputs = sorted(Path("scene").rglob("*raw.png"))
+    inputs = sorted(Path(SCENE_DIR).rglob("*raw.png"))
     for p in inputs:
         raw = cv2.imread(str(p), cv2.IMREAD_UNCHANGED)
         img = raw.astype(np.float32) / 65535.0
